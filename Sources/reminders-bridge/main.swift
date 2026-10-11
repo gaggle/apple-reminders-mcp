@@ -118,9 +118,45 @@ struct ReminderJSON: Codable {
     let completed: Bool
     let due: String?
     let allDay: Bool
+    let recurrence: String?
+    let section: String?
 }
 
-func toJSON(_ r: EKReminder) -> ReminderJSON {
+// A compact, RRULE-style rendering of a reminder's repeat rules (e.g.
+// "FREQ=MONTHLY;INTERVAL=3"), for logging which items repeat. Built by hand
+// because EKRecurrenceRule's own description embeds an object address.
+func describeRecurrence(_ rules: [EKRecurrenceRule]?) -> String? {
+    guard let rules, !rules.isEmpty else { return nil }
+    let frequencies = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"]
+    let weekdays = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
+    func list(_ values: [NSNumber]?) -> String? {
+        guard let values, !values.isEmpty else { return nil }
+        return values.map { $0.stringValue }.joined(separator: ",")
+    }
+    return rules.map { rule in
+        var parts = ["FREQ=\(frequencies[rule.frequency.rawValue])", "INTERVAL=\(rule.interval)"]
+        if let days = rule.daysOfTheWeek, !days.isEmpty {
+            parts.append("BYDAY=" + days.map {
+                ($0.weekNumber != 0 ? "\($0.weekNumber)" : "") + weekdays[$0.dayOfTheWeek.rawValue - 1]
+            }.joined(separator: ","))
+        }
+        if let v = list(rule.daysOfTheMonth) { parts.append("BYMONTHDAY=\(v)") }
+        if let v = list(rule.monthsOfTheYear) { parts.append("BYMONTH=\(v)") }
+        if let v = list(rule.weeksOfTheYear) { parts.append("BYWEEKNO=\(v)") }
+        if let v = list(rule.daysOfTheYear) { parts.append("BYYEARDAY=\(v)") }
+        if let v = list(rule.setPositions) { parts.append("BYSETPOS=\(v)") }
+        if let end = rule.recurrenceEnd {
+            if let date = end.endDate {
+                parts.append("UNTIL=\(ISO8601DateFormatter().string(from: date))")
+            } else {
+                parts.append("COUNT=\(end.occurrenceCount)")
+            }
+        }
+        return parts.joined(separator: ";")
+    }.joined(separator: " | ")
+}
+
+func toJSON(_ r: EKReminder, section: String?) -> ReminderJSON {
     var due: String? = nil
     var allDay = false
     if let comps = r.dueDateComponents {
@@ -133,7 +169,9 @@ func toJSON(_ r: EKReminder) -> ReminderJSON {
         body: r.notes ?? "",
         completed: r.isCompleted,
         due: due,
-        allDay: allDay
+        allDay: allDay,
+        recurrence: describeRecurrence(r.recurrenceRules),
+        section: section
     )
 }
 
@@ -162,7 +200,7 @@ struct ParsedArgs {
     private let values: [String: String]
     private let flags: Set<String>
 
-    static let flagNames: Set<String> = ["all-day"]
+    static let flagNames: Set<String> = ["all-day", "no-sections"]
 
     init(_ args: [String]) {
         var values: [String: String] = [:]
@@ -211,16 +249,21 @@ case "get-reminders":
         print("[]")
         break
     }
-    printJSON(fetchReminders(in: cal).map(toJSON))
-
-case "get-reminder":
-    guard let listName = opts.opt("list"), let id = opts.opt("id"),
-          let item = findReminder(id: id, inList: listName)
-    else {
-        print("null")
-        break
+    let started = Date()
+    let reminders = fetchReminders(in: cal)
+    let fetched = Date()
+    // Sections come from ReminderKit, one lookup per reminder — skipped
+    // outright for a list that has none, or when the caller doesn't sync them.
+    let sections: ListSections? = opts.flag("no-sections") ? nil : ListSections(calendar: cal)
+    let hasSections = sections.map { !$0.all().isEmpty } ?? false
+    let rows = reminders.map {
+        toJSON($0, section: hasSections ? sections?.sectionName(ofReminder: $0.calendarItemIdentifier) : nil)
     }
-    printJSON(toJSON(item))
+    // Timing goes to stderr, which the Python side logs at DEBUG.
+    eprint(String(format: "get-reminders: %d reminders (%d open) fetched in %.1fs, sections %@ in %.1fs",
+                  reminders.count, reminders.filter { !$0.isCompleted }.count, fetched.timeIntervalSince(started),
+                  sections == nil ? "skipped" : hasSections ? "looked up" : "none", Date().timeIntervalSince(fetched)))
+    printJSON(rows)
 
 case "create-reminder":
     guard let listName = opts.opt("list"), let cal = findCalendar(named: listName, createIfMissing: true) else {
@@ -320,6 +363,56 @@ case "set-due":
         printJSON(["ok": true])
     } catch {
         eprint("save failed: \(error)")
+        printJSON(["ok": false])
+    }
+
+case "set-section":
+    // --section "" takes the reminder out of any section.
+    guard let listName = opts.opt("list"), let id = opts.opt("id"),
+          let item = findReminder(id: id, inList: listName), let name = opts.opt("section")
+    else {
+        printJSON(["ok": false])
+        break
+    }
+    ListSections(calendar: item.calendar).move(reminder: item.calendarItemIdentifier, to: name.isEmpty ? nil : name)
+    printJSON(["ok": true])
+
+case "alert":
+    // A loud reminder in the user's default list — deliberately not the
+    // synced one — so a stopped sync gets noticed on every device: high
+    // priority, due a minute from now, with an alarm at the due time.
+    guard let cal = store.defaultCalendarForNewReminders() else {
+        eprint("no default Reminders list")
+        exit(1)
+    }
+    let alert = EKReminder(eventStore: store)
+    alert.calendar = cal
+    alert.title = opts.opt("name") ?? "Todoist Sync stopped"
+    alert.notes = opts.opt("body") ?? ""
+    alert.priority = 1
+    let due = Date().addingTimeInterval(60)
+    alert.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+    alert.addAlarm(EKAlarm(absoluteDate: due))
+    do {
+        try store.save(alert, commit: true)
+        printJSON(["id": alert.calendarItemIdentifier])
+    } catch {
+        eprint("save failed: \(error)")
+        exit(1)
+    }
+
+case "delete":
+    guard let listName = opts.opt("list"), let id = opts.opt("id"),
+          let item = findReminder(id: id, inList: listName)
+    else {
+        printJSON(["ok": false])
+        break
+    }
+    do {
+        try store.remove(item, commit: true)
+        printJSON(["ok": true])
+    } catch {
+        eprint("remove failed: \(error)")
         printJSON(["ok": false])
     }
 
