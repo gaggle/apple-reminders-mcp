@@ -40,7 +40,7 @@ import Foundation
     @objc(setUnsavedMembershipsOfRemindersInSections:) func setUnsavedMemberships(_ memberships: NSObject)
 }
 
-func rkFail(_ message: String) -> Never {
+public func rkFail(_ message: String) -> Never {
     eprint("ReminderKit: \(message) — this macOS version may have changed the private API")
     exit(1)
 }
@@ -102,14 +102,14 @@ func rkMembership(member: UUID, group: UUID, obsolete: Bool) -> NSObject {
 let notInAUserDefinedSection = -3009
 
 /// The sections of one Reminders list, by display name.
-final class ListSections {
+public final class ListSections {
     private let store: NSObject
     private let storeAPI: RKStore
     private let listID: NSObject
     private lazy var dataView = rk(rkInit("REMListSectionsDataView", "initWithStore:", store), as: RKSectionsDataView.self,
                                    "fetchListSectionWithReminderID:error:")
 
-    init(calendar: EKCalendar) {
+    public init(calendar: EKCalendar) {
         guard dlopen("/System/Library/PrivateFrameworks/ReminderKit.framework/ReminderKit", RTLD_NOW) != nil else {
             rkFail("framework failed to load")
         }
@@ -129,7 +129,7 @@ final class ListSections {
     }
 
     /// (name, object id) for each section, in the list's order.
-    func all() -> [(name: String, objectID: NSObject)] {
+    public func all() -> [(name: String, objectID: NSObject)] {
         do {
             return try storeAPI.fetchListSections(listObjectID: listID).map {
                 (rkValue($0, "displayName"), rkValue($0, "objectID"))
@@ -139,7 +139,7 @@ final class ListSections {
         }
     }
 
-    func sectionName(ofReminder reminderID: String) -> String? {
+    public func sectionName(ofReminder reminderID: String) -> String? {
         var error: NSError?
         let section = dataView.fetchListSection(reminderID: ListSections.objectID("REMCDReminder", reminderID), error: &error)
         if let error {
@@ -153,7 +153,7 @@ final class ListSections {
 
     /// Moves a reminder into the named section — created at the end if the
     /// list has none by that name — or, with nil, out of any section.
-    func move(reminder reminderID: String, to name: String?) {
+    public func move(reminder reminderID: String, to name: String?) {
         guard let member = UUID(uuidString: reminderID) else { rkFail("\(reminderID) isn't a uuid") }
         let membership: NSObject
         if let name {
