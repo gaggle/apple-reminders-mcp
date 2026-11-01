@@ -64,6 +64,7 @@ let tools: [Tool] = [
             "notes": prop("string", "Notes shown under the title."),
             "due": prop("string", dueDescription),
             "section": prop("string", "Section to put it in; created at the end of the list if it doesn't exist."),
+            "flagged": prop("boolean", "Flag it. Defaults to false."),
         ], required: ["list", "name"]),
         annotations: .init(title: "Create reminder", readOnlyHint: false, destructiveHint: false, idempotentHint: false)
     ),
@@ -78,6 +79,7 @@ let tools: [Tool] = [
             "due": prop("string", dueDescription + " An empty string clears the due date."),
             "completed": prop("boolean", "Mark completed (true) or open again (false)."),
             "section": prop("string", "Move to this section, created if missing; an empty string takes it out of any section."),
+            "flagged": prop("boolean", "Flag (true) or unflag (false)."),
         ], required: ["list", "id"]),
         annotations: .init(title: "Update reminder", readOnlyHint: false, destructiveHint: false, idempotentHint: true)
     ),
@@ -100,6 +102,7 @@ private struct ReminderOut: Encodable {
     let name: String
     let notes: String
     let completed: Bool
+    let flagged: Bool
     let due: String?
     let allDay: Bool
     let recurrence: String?
@@ -110,6 +113,7 @@ private struct ReminderOut: Encodable {
         name = r.name
         notes = r.body
         completed = r.completed
+        flagged = r.flagged
         // Midnight is noise on an all-day date.
         due = r.allDay ? r.due.map { String($0.prefix(10)) } : r.due
         allDay = r.allDay
@@ -153,7 +157,8 @@ private func parseDue(_ s: String) throws -> DateComponents {
 private func out(_ item: EKReminder) -> ReminderOut {
     let sections = ListSections(calendar: item.calendar)
     let section = sections.all().isEmpty ? nil : sections.sectionName(ofReminder: item.calendarItemIdentifier)
-    return ReminderOut(toJSON(item, section: section))
+    let flagged = ReminderFlags().flagged(among: [item.calendarItemIdentifier]).contains(item.calendarItemIdentifier)
+    return ReminderOut(toJSON(item, section: section, flagged: flagged))
 }
 
 private func save(_ item: EKReminder) throws {
@@ -172,8 +177,10 @@ func listReminders(_ args: Args) throws -> String {
     let reminders = fetchReminders(in: cal).filter { includeCompleted || !$0.isCompleted }
     let sections = ListSections(calendar: cal)
     let hasSections = !sections.all().isEmpty
+    let flagged = ReminderFlags().flagged(among: reminders.map(\.calendarItemIdentifier))
     return try json(reminders.map {
-        ReminderOut(toJSON($0, section: hasSections ? sections.sectionName(ofReminder: $0.calendarItemIdentifier) : nil))
+        let id = $0.calendarItemIdentifier
+        return ReminderOut(toJSON($0, section: hasSections ? sections.sectionName(ofReminder: id) : nil, flagged: flagged.contains(id)))
     })
 }
 
@@ -188,6 +195,7 @@ func createReminder(_ args: Args) throws -> String {
     if let section = args.string("section"), !section.isEmpty {
         ListSections(calendar: cal).move(reminder: item.calendarItemIdentifier, to: section)
     }
+    if args.bool("flagged") == true { ReminderFlags().setFlagged(item.calendarItemIdentifier, true) }
     return try json(out(item))
 }
 
@@ -201,6 +209,7 @@ func updateReminder(_ args: Args) throws -> String {
     if let section = args.string("section") {
         ListSections(calendar: item.calendar).move(reminder: item.calendarItemIdentifier, to: section.isEmpty ? nil : section)
     }
+    if let flagged = args.bool("flagged") { ReminderFlags().setFlagged(item.calendarItemIdentifier, flagged) }
     return try json(out(item))
 }
 

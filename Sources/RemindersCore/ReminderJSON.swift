@@ -6,6 +6,7 @@ public struct ReminderJSON: Codable {
     public let name: String
     public let body: String
     public let completed: Bool
+    public let flagged: Bool
     public let due: String?
     public let allDay: Bool
     public let recurrence: String?
@@ -46,7 +47,7 @@ public func describeRecurrence(_ rules: [EKRecurrenceRule]?) -> String? {
     }.joined(separator: " | ")
 }
 
-public func toJSON(_ r: EKReminder, section: String?) -> ReminderJSON {
+public func toJSON(_ r: EKReminder, section: String?, flagged: Bool) -> ReminderJSON {
     var due: String? = nil
     var allDay = false
     if let comps = r.dueDateComponents {
@@ -58,6 +59,7 @@ public func toJSON(_ r: EKReminder, section: String?) -> ReminderJSON {
         name: r.title ?? "",
         body: r.notes ?? "",
         completed: r.isCompleted,
+        flagged: flagged,
         due: due,
         allDay: allDay,
         recurrence: describeRecurrence(r.recurrenceRules),

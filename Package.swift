@@ -22,6 +22,8 @@ let package = Package(
                 "-Xlinker", Context.packageDirectory + "/Sources/apple-reminders-mcp/Info.plist",
             ])]
         ),
+        // Drives the installed server over stdio; run with scripts/test.sh.
+        .testTarget(name: "apple-reminders-mcp-tests"),
     ],
     swiftLanguageModes: [.v5]
 )

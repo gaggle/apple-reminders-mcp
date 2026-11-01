@@ -97,6 +97,15 @@ func rkMembership(member: UUID, group: UUID, obsolete: Bool) -> NSObject {
     return made.takeRetainedValue()
 }
 
+/// A fresh REMStore, with ReminderKit loaded.
+func rkStore() -> NSObject {
+    guard dlopen("/System/Library/PrivateFrameworks/ReminderKit.framework/ReminderKit", RTLD_NOW) != nil else {
+        rkFail("framework failed to load")
+    }
+    guard let storeClass = rkClass("REMStore") as? NSObject.Type else { rkFail("REMStore isn't an NSObject") }
+    return storeClass.init()
+}
+
 // "Reminder does not belong to a user-defined section"
 let notInAUserDefinedSection = -3009
 
@@ -109,11 +118,7 @@ public final class ListSections {
                                    "fetchListSectionWithReminderID:error:")
 
     public init(calendar: EKCalendar) {
-        guard dlopen("/System/Library/PrivateFrameworks/ReminderKit.framework/ReminderKit", RTLD_NOW) != nil else {
-            rkFail("framework failed to load")
-        }
-        guard let storeClass = rkClass("REMStore") as? NSObject.Type else { rkFail("REMStore isn't an NSObject") }
-        store = storeClass.init()
+        store = rkStore()
         storeAPI = rk(store, as: RKStore.self, "fetchListWithObjectID:error:", "fetchListSectionsWithListObjectID:error:")
         listID = ListSections.objectID("REMCDList", calendar.calendarIdentifier)
     }

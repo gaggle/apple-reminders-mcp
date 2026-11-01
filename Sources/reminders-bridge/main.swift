@@ -86,8 +86,10 @@ case "get-reminders":
     // outright for a list that has none, or when the caller doesn't sync them.
     let sections: ListSections? = opts.flag("no-sections") ? nil : ListSections(calendar: cal)
     let hasSections = sections.map { !$0.all().isEmpty } ?? false
+    let flagged = ReminderFlags().flagged(among: reminders.map(\.calendarItemIdentifier))
     let rows = reminders.map {
-        toJSON($0, section: hasSections ? sections?.sectionName(ofReminder: $0.calendarItemIdentifier) : nil)
+        let id = $0.calendarItemIdentifier
+        return toJSON($0, section: hasSections ? sections?.sectionName(ofReminder: id) : nil, flagged: flagged.contains(id))
     }
     // Timing goes to stderr, so it never mixes with the JSON on stdout.
     eprint(String(format: "get-reminders: %d reminders (%d open) fetched in %.1fs, sections %@ in %.1fs",
@@ -205,6 +207,17 @@ case "set-section":
         break
     }
     ListSections(calendar: item.calendar).move(reminder: item.calendarItemIdentifier, to: name.isEmpty ? nil : name)
+    printJSON(["ok": true])
+
+case "set-flagged":
+    // --flagged true|false
+    guard let listName = opts.opt("list"), let id = opts.opt("id"),
+          let item = findReminder(id: id, inList: listName), let value = opts.opt("flagged").flatMap(Bool.init)
+    else {
+        printJSON(["ok": false])
+        break
+    }
+    ReminderFlags().setFlagged(item.calendarItemIdentifier, value)
     printJSON(["ok": true])
 
 case "alert":
