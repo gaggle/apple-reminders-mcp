@@ -15,7 +15,7 @@ func printJSON<T: Encodable>(_ value: T) {
 // than by scanning the whole array for a matching `--key`. A scan treats
 // every element as a potential option name, including the ones that are
 // really values — so a reminder titled "--all-day" or "--body" (titles and
-// notes come from Todoist, i.e. outside this program's control) would be
+// notes come from the caller, i.e. outside this program's control) would be
 // re-read as an option and silently change how the rest of the command
 // parsed. Consuming each value positionally means a value is never
 // inspected as a key, whatever it happens to contain.
@@ -89,7 +89,7 @@ case "get-reminders":
     let rows = reminders.map {
         toJSON($0, section: hasSections ? sections?.sectionName(ofReminder: $0.calendarItemIdentifier) : nil)
     }
-    // Timing goes to stderr, which the Python side logs at DEBUG.
+    // Timing goes to stderr, so it never mixes with the JSON on stdout.
     eprint(String(format: "get-reminders: %d reminders (%d open) fetched in %.1fs, sections %@ in %.1fs",
                   reminders.count, reminders.filter { !$0.isCompleted }.count, fetched.timeIntervalSince(started),
                   sections == nil ? "skipped" : hasSections ? "looked up" : "none", Date().timeIntervalSince(fetched)))
@@ -208,16 +208,16 @@ case "set-section":
     printJSON(["ok": true])
 
 case "alert":
-    // A loud reminder in the user's default list — deliberately not the
-    // synced one — so a stopped sync gets noticed on every device: high
-    // priority, due a minute from now, with an alarm at the due time.
+    // A loud reminder in the user's default list, so something that needs
+    // attention gets noticed on every device: high priority, due a minute
+    // from now, with an alarm at the due time.
     guard let cal = store.defaultCalendarForNewReminders() else {
         eprint("no default Reminders list")
         exit(1)
     }
     let alert = EKReminder(eventStore: store)
     alert.calendar = cal
-    alert.title = opts.opt("name") ?? "Todoist Sync stopped"
+    alert.title = opts.opt("name") ?? "Needs attention"
     alert.notes = opts.opt("body") ?? ""
     alert.priority = 1
     let due = Date().addingTimeInterval(60)

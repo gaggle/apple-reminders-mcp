@@ -1,8 +1,7 @@
 import Foundation
 
 // Wire format for due dates is "yyyy-MM-ddTHH:mm:ss" with no timezone —
-// matching the naive/local datetimes used throughout the Python side and
-// AppleScript's local wall-clock dates. Parsing/formatting these as literal
+// local wall-clock time, as Reminders shows it. Parsing/formatting these as literal
 // calendar components (never through Date/ISO8601DateFormatter, which are
 // instant-based and would silently shift the date across timezone
 // boundaries — exactly the bug this caused during testing) keeps it

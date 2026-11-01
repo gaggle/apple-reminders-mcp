@@ -1,0 +1,7 @@
+apple-reminders-mcp
+Copyright 2026 Jon Lauridsen
+
+reminders-bridge started as the Swift helper in todoist-sync by Max Harris
+(https://github.com/skibum1869/todoist-sync), licensed under the Apache
+License 2.0. It has since been extended and split into the RemindersCore
+library this project's MCP server shares.

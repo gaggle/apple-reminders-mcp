@@ -11,7 +11,7 @@ import RemindersCore
 //
 // Only done when the binary carries that Info.plist (see Package.swift);
 // without one there is nothing to be responsible with.
-private let disclaimedEnv = "MAC_REMINDERS_DISCLAIMED"
+private let disclaimedEnv = "APPLE_REMINDERS_MCP_DISCLAIMED"
 
 func relaunchDisclaimedIfNeeded() {
     guard Bundle.main.bundleIdentifier != nil, getenv(disclaimedEnv) == nil else { return }

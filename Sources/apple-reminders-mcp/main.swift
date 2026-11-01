@@ -9,9 +9,9 @@ let version = "0.1.0"
 let accessGranted = requestAccess()
 
 let server = Server(
-    name: "mac-reminders",
+    name: "apple-reminders",
     version: version,
-    title: "Mac Reminders",
+    title: "Apple Reminders",
     instructions: """
         Reads and manages the user's Apple Reminders. Every reminder lives in a list, \
         and every call that touches a reminder names its list; call list_lists to see \
@@ -29,7 +29,7 @@ await server.withMethodHandler(CallTool.self) { params in
     do {
         guard accessGranted else {
             throw ToolError("""
-                Reminders access isn't granted to Mac Reminders MCP. \
+                Reminders access isn't granted to Reminders MCP. \
                 Allow it in System Settings > Privacy & Security > Reminders, then restart the server.
                 """)
         }

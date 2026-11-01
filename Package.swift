@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "mac-reminders",
+    name: "apple-reminders-mcp",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
@@ -11,7 +11,7 @@ let package = Package(
         .target(name: "RemindersCore"),
         .executableTarget(name: "reminders-bridge", dependencies: ["RemindersCore"]),
         .executableTarget(
-            name: "mac-reminders-mcp",
+            name: "apple-reminders-mcp",
             dependencies: ["RemindersCore", .product(name: "MCP", package: "swift-sdk")],
             exclude: ["Info.plist"],
             // Embeds Info.plist in the binary: its name and Reminders usage
@@ -19,7 +19,7 @@ let package = Package(
             // app bundle needed.
             linkerSettings: [.unsafeFlags([
                 "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
-                "-Xlinker", Context.packageDirectory + "/Sources/mac-reminders-mcp/Info.plist",
+                "-Xlinker", Context.packageDirectory + "/Sources/apple-reminders-mcp/Info.plist",
             ])]
         ),
     ],

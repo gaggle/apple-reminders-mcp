@@ -5,8 +5,7 @@
 // EventKit's ids: a list's calendarIdentifier and a reminder's
 // calendarItemIdentifier are their ReminderKit uuids. Private API can change
 // with any macOS update, so every class and selector is checked before use;
-// a missing one exits non-zero, which fails the sync and trips its circuit
-// breaker rather than letting it half-work.
+// a missing one exits non-zero rather than letting it half-work.
 import EventKit
 import Foundation
 
