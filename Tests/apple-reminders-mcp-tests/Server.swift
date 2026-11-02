@@ -5,6 +5,11 @@ let testList = ProcessInfo.processInfo.environment["REMINDERS_MCP_TEST_LIST"] ??
 let serverPath = ProcessInfo.processInfo.environment["REMINDERS_MCP_TEST_SERVER"]
 let serverInstalled = serverPath != nil
 
+/// Every end-to-end suite, run one at a time: they all share the test list,
+/// and one suite's creates and deletes can race another's moves.
+@Suite(.enabled(if: serverInstalled, "run with scripts/test.sh"), .serialized)
+struct EndToEnd {}
+
 struct ToolFailed: Error, CustomStringConvertible {
     let description: String
 }
@@ -57,6 +62,30 @@ final class Server {
         let reminder = created as! [String: Any]
         defer { _ = try? call("delete_reminder", ["list": testList, "id": reminder["id"]!]) }
         try body(reminder)
+    }
+
+    /// Creates several reminders in the test list, in order, runs body with
+    /// them, and deletes them.
+    func withReminders(_ count: Int, _ extra: [String: Any] = [:], _ body: ([[String: Any]]) throws -> Void) throws {
+        var created: [[String: Any]] = []
+        defer { for reminder in created { _ = try? call("delete_reminder", ["list": testList, "id": reminder["id"]!]) } }
+        for _ in 0..<count {
+            let reminder = try call("create_reminder", ["list": testList, "name": "test \(UUID().uuidString)"].merging(extra) { $1 })
+            created.append(reminder as! [String: Any])
+        }
+        try body(created)
+    }
+
+    /// The ids among `ids` in the order list_reminders returns them.
+    func order(of ids: [String]) throws -> [String] {
+        let all = try call("list_reminders", ["list": testList]) as! [[String: Any]]
+        return all.map { $0["id"] as! String }.filter(ids.contains)
+    }
+
+    /// The test list's sections, in order.
+    func sections() throws -> [String] {
+        let lists = try call("list_lists", [:]) as! [[String: Any]]
+        return lists.first { $0["name"] as? String == testList }?["sections"] as? [String] ?? []
     }
 
     /// The test list's open reminders, by id.

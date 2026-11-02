@@ -42,13 +42,13 @@ private let dueDescription = #""YYYY-MM-DD" for an all-day due date, "YYYY-MM-DD
 let tools: [Tool] = [
     Tool(
         name: "list_lists",
-        description: "Lists the user's Reminders lists, with each list's sections.",
+        description: "Lists the user's Reminders lists, with each list's sections and how it's sorted; the Reminders app shows the order move_reminder sets only for lists sorted \"manual\".",
         inputSchema: schema([:], required: []),
         annotations: .init(title: "List Reminders lists", readOnlyHint: true)
     ),
     Tool(
         name: "list_reminders",
-        description: "Lists the reminders in one list. Open ones only, unless include_completed is true.",
+        description: "Lists the reminders in one list, in the list's manual order. Open ones only, unless include_completed is true.",
         inputSchema: schema([
             "list": listProp,
             "include_completed": prop("boolean", "Also return completed reminders. Defaults to false."),
@@ -84,6 +84,17 @@ let tools: [Tool] = [
         annotations: .init(title: "Update reminder", readOnlyHint: false, destructiveHint: false, idempotentHint: true)
     ),
     Tool(
+        name: "move_reminder",
+        description: "Moves a reminder directly before or after another reminder in the same list, and returns it. Give exactly one of before and after.",
+        inputSchema: schema([
+            "list": listProp,
+            "id": idProp,
+            "before": prop("string", "Id of the reminder to move it directly before."),
+            "after": prop("string", "Id of the reminder to move it directly after."),
+        ], required: ["list", "id"]),
+        annotations: .init(title: "Move reminder", readOnlyHint: false, destructiveHint: false, idempotentHint: true)
+    ),
+    Tool(
         name: "delete_reminder",
         description: "Deletes a reminder permanently. Reminders has no trash, so this can't be undone; completing it is usually what's wanted.",
         inputSchema: schema(["list": listProp, "id": idProp], required: ["list", "id"]),
@@ -95,6 +106,7 @@ private struct ListOut: Encodable {
     let id: String
     let name: String
     let sections: [String]
+    let sorting: String?
 }
 
 private struct ReminderOut: Encodable {
@@ -167,14 +179,15 @@ private func save(_ item: EKReminder) throws {
 
 func listLists() throws -> String {
     try json(reminderLists().map { cal in
-        ListOut(id: cal.calendarIdentifier, name: cal.title, sections: ListSections(calendar: cal).all().map(\.name))
+        ListOut(id: cal.calendarIdentifier, name: cal.title, sections: ListSections(calendar: cal).all().map(\.name),
+                sorting: ReminderOrdering(calendar: cal).sortingStyle())
     })
 }
 
 func listReminders(_ args: Args) throws -> String {
     let cal = try list(args)
     let includeCompleted = args.bool("include_completed") ?? false
-    let reminders = fetchReminders(in: cal).filter { includeCompleted || !$0.isCompleted }
+    let reminders = ReminderOrdering(calendar: cal).sorted(fetchReminders(in: cal).filter { includeCompleted || !$0.isCompleted })
     let sections = ListSections(calendar: cal)
     let hasSections = !sections.all().isEmpty
     let flagged = ReminderFlags().flagged(among: reminders.map(\.calendarItemIdentifier))
@@ -210,6 +223,26 @@ func updateReminder(_ args: Args) throws -> String {
         ListSections(calendar: item.calendar).move(reminder: item.calendarItemIdentifier, to: section.isEmpty ? nil : section)
     }
     if let flagged = args.bool("flagged") { ReminderFlags().setFlagged(item.calendarItemIdentifier, flagged) }
+    return try json(out(item))
+}
+
+func moveReminder(_ args: Args) throws -> String {
+    let item = try reminder(args)
+    let (before, after) = (args.string("before"), args.string("after"))
+    guard (before == nil) != (after == nil), let siblingID = before ?? after else {
+        throw ToolError("Give exactly one of before and after.")
+    }
+    guard let sibling = findReminder(id: siblingID, inList: item.calendar.title) else {
+        throw ToolError("No reminder with id \(siblingID) in \"\(item.calendar.title)\".")
+    }
+    // Ids match case-insensitively, so compare the reminders found.
+    let (id, siblingItemID) = (item.calendarItemIdentifier, sibling.calendarItemIdentifier)
+    guard siblingItemID != id else { throw ToolError("Can't move a reminder next to itself.") }
+    let ordering = ReminderOrdering(calendar: item.calendar)
+    guard !ordering.isSubtask(id), !ordering.isSubtask(siblingItemID) else {
+        throw ToolError("Subtasks can't be moved, or moved next to.")
+    }
+    ordering.move(id, after: after != nil, sibling: siblingItemID)
     return try json(out(item))
 }
 

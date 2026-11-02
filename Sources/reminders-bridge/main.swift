@@ -72,7 +72,9 @@ let opts = ParsedArgs(rest)
 
 switch command {
 case "get-lists":
-    printJSON(reminderLists().map { ["id": $0.calendarIdentifier, "name": $0.title] })
+    printJSON(reminderLists().map { cal -> [String: String?] in
+        ["id": cal.calendarIdentifier, "name": cal.title, "sorting": ReminderOrdering(calendar: cal).sortingStyle()]
+    })
 
 case "get-reminders":
     guard let listName = opts.opt("list"), let cal = findCalendar(named: listName, createIfMissing: true) else {
@@ -80,7 +82,7 @@ case "get-reminders":
         break
     }
     let started = Date()
-    let reminders = fetchReminders(in: cal)
+    let reminders = ReminderOrdering(calendar: cal).sorted(fetchReminders(in: cal))
     let fetched = Date()
     // Sections come from ReminderKit, one lookup per reminder — skipped
     // outright for a list that has none, or when the caller doesn't sync them.
@@ -218,6 +220,29 @@ case "set-flagged":
         break
     }
     ReminderFlags().setFlagged(item.calendarItemIdentifier, value)
+    printJSON(["ok": true])
+
+case "move":
+    // --before Y or --after Y: directly before or after another reminder
+    // in the list, joining its section as in the Reminders app.
+    guard let listName = opts.opt("list"), let id = opts.opt("id"),
+          let item = findReminder(id: id, inList: listName),
+          (opts.opt("before") == nil) != (opts.opt("after") == nil),
+          let siblingID = opts.opt("before") ?? opts.opt("after"),
+          let sibling = findReminder(id: siblingID, inList: listName),
+          // Ids match case-insensitively, so compare the reminders found.
+          sibling.calendarItemIdentifier != item.calendarItemIdentifier
+    else {
+        printJSON(["ok": false])
+        break
+    }
+    let (itemID, siblingItemID) = (item.calendarItemIdentifier, sibling.calendarItemIdentifier)
+    let ordering = ReminderOrdering(calendar: item.calendar)
+    guard !ordering.isSubtask(itemID), !ordering.isSubtask(siblingItemID) else {
+        printJSON(["ok": false])
+        break
+    }
+    ordering.move(itemID, after: opts.opt("after") != nil, sibling: siblingItemID)
     printJSON(["ok": true])
 
 case "alert":

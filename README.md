@@ -1,8 +1,8 @@
 # apple-reminders-mcp
 
-An MCP server that lets Claude, or any MCP client, read and manage your Apple Reminders on macOS: lists, list sections, due dates, notes, flags and completion. It comes with `reminders-bridge`, a command-line tool over the same library.
+An MCP server that lets Claude, or any MCP client, read and manage your Apple Reminders on macOS: lists, list sections, manual order, due dates, notes, flags and completion. It comes with `reminders-bridge`, a command-line tool over the same library.
 
-Both are built on `RemindersCore`: EventKit for reminders and lists, and ReminderKit, the private framework the Reminders app itself uses, for list sections and flags, which EventKit doesn't expose.
+Both are built on `RemindersCore`: EventKit for reminders and lists, and ReminderKit, the private framework the Reminders app itself uses, for list sections, manual order and flags, which EventKit doesn't expose.
 
 Requires macOS 14 or later and Swift 6.
 
@@ -13,9 +13,11 @@ scripts/install.sh
 claude mcp add --scope user reminders -- "$HOME/Library/Application Support/apple-reminders-mcp/Reminders MCP"
 ```
 
-Tools: `list_lists`, `list_reminders`, `create_reminder`, `update_reminder`, `delete_reminder`. Only `delete_reminder` is marked destructive; Reminders has no trash, so it's the one worth leaving on "ask".
+Tools: `list_lists`, `list_reminders`, `create_reminder`, `update_reminder`, `move_reminder`, `delete_reminder`. Only `delete_reminder` is marked destructive; Reminders has no trash, so it's the one worth leaving on "ask".
 
 Every reminder is addressed within its list, so a reminder id from one list can't touch another. Due dates are local wall-clock time: `YYYY-MM-DD` for an all-day due date, `YYYY-MM-DDTHH:MM` for a specific time.
+
+Reminders are listed in the list's manual order, the one the Reminders app shows when a list is sorted manually; `list_lists` says how each list is sorted. `move_reminder` puts a reminder directly before or after another in the same list, and, as in the Reminders app, into that one's section. Subtasks can't be moved.
 
 ### Reminders access
 
@@ -31,11 +33,11 @@ reminders-bridge get-lists
 reminders-bridge get-reminders --list Chores
 ```
 
-Commands: `get-lists`, `get-reminders`, `create-reminder`, `set-body`, `set-name`, `complete`, `uncomplete`, `set-due`, `set-section`, `set-flagged`, `alert`, `delete`. JSON out; every id-based command is scoped to `--list`.
+Commands: `get-lists`, `get-reminders`, `create-reminder`, `set-body`, `set-name`, `complete`, `uncomplete`, `set-due`, `set-section`, `set-flagged`, `move` (`--before` or `--after` another id), `alert`, `delete`. JSON out; every id-based command is scoped to `--list`.
 
-## Sections and flags use a private framework
+## Sections, order and flags use a private framework
 
-Sections and flags go through ReminderKit, which Apple doesn't document and can change with any macOS update. Every class and selector is checked before use, so if it changes, anything touching them exits instead of half-working. Everything else uses EventKit.
+Sections, manual order and flags go through ReminderKit, which Apple doesn't document and can change with any macOS update. Every class and selector is checked before use, so if it changes, anything touching them exits instead of half-working. Everything else uses EventKit.
 
 ## Tests
 
@@ -43,7 +45,7 @@ Sections and flags go through ReminderKit, which Apple doesn't document and can 
 scripts/test.sh
 ```
 
-End-to-end, against real Reminders: a test process can't get Reminders access itself, so the tests drive the server, installed as "Reminders MCP Tests" (the first run asks for access). They work in an existing list, "Sync Test" unless `REMINDERS_MCP_TEST_LIST` names another, touching only reminders they create and delete. Runs with Xcode's toolchain, for Swift Testing.
+End-to-end, against real Reminders: a test process can't get Reminders access itself, so the tests drive the server, installed as "Reminders MCP Tests" (the first run asks for access). They work in an existing list, "Sync Test" unless `REMINDERS_MCP_TEST_LIST` names another, touching only reminders they create and delete, one suite at a time; the ordering tests also need it to have at least two sections. Runs with Xcode's toolchain, for Swift Testing.
 
 ## License
 

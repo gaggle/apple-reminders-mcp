@@ -33,6 +33,10 @@ await server.withMethodHandler(CallTool.self) { params in
                 Allow it in System Settings > Privacy & Security > Reminders, then restart the server.
                 """)
         }
+        // EventKit caches what it's read, and writes some of it back: a
+        // new reminder goes onto its cached copy of the list's order, so a
+        // stale copy undoes any move made since. Each call starts fresh.
+        store.reset()
         let args = Args(params.arguments ?? [:])
         let output: String
         switch params.name {
@@ -40,6 +44,7 @@ await server.withMethodHandler(CallTool.self) { params in
         case "list_reminders": output = try listReminders(args)
         case "create_reminder": output = try createReminder(args)
         case "update_reminder": output = try updateReminder(args)
+        case "move_reminder": output = try moveReminder(args)
         case "delete_reminder": output = try deleteReminder(args)
         default: throw ToolError("unknown tool: \(params.name)")
         }
